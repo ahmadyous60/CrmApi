@@ -52,9 +52,22 @@ public class ContactsController : ControllerBase
         dbContact.FirstName = input.FirstName;
         dbContact.LastName = input.LastName;
         dbContact.Email = input.Email;
-        dbContact.Phone = input.Phone;
+        dbContact.Mobile = input.Mobile;
+        dbContact.Dob = input.Dob;
+        dbContact.ReportingTo = input.ReportingTo;
+
+        dbContact.MailingStreet = input.MailingStreet;
+        dbContact.OtherStreet = input.OtherStreet;
+        dbContact.MailingCity = input.MailingCity;
+        dbContact.OtherCity = input.OtherCity;
+        dbContact.MailingState = input.MailingState;
+        dbContact.OtherState = input.OtherState;
+        dbContact.MailingZip = input.MailingZip;
+        dbContact.MailingCountry = input.MailingCountry;
+
         dbContact.CompanyId = input.CompanyId;
-        dbContact.CreatedAt = dbContact.CreatedAt; // keep original created date
+        // keep CreatedAt unchanged
+        dbContact.CreatedAt = dbContact.CreatedAt;
 
         await _db.SaveChangesAsync();
 
