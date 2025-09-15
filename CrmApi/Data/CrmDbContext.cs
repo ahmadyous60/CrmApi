@@ -19,6 +19,7 @@ namespace CrmApi.Data
         public DbSet<Models.Task> Tasks { get; set; }
         public DbSet<Note> Notes { get; set; }
         public DbSet<Event> Events { get; set; }
+        public DbSet<RefreshToken> RefreshTokens { get; set; }
 
         protected override void OnModelCreating(ModelBuilder b)
         {

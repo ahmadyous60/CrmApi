@@ -1,35 +1,68 @@
 using CrmApi.Data;
 using CrmApi.Services;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.UI.Services;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
+using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// --- Services ---
+// --- Constants ---
 const string CorsPolicy = "ng-client";
 
-// EF Core + SQL Server
-builder.Services.AddDbContext<CrmDbContext>(opts =>
-    opts.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+// --- Database ---
+builder.Services.AddDbContext<CrmDbContext>(options =>
+    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-// Identity
+// --- Identity ---
 builder.Services.AddIdentity<IdentityUser, IdentityRole>(options =>
 {
     options.Password.RequireDigit = true;
     options.Password.RequireNonAlphanumeric = false;
 })
- .AddEntityFrameworkStores<CrmDbContext>() 
+.AddEntityFrameworkStores<CrmDbContext>()
 .AddDefaultTokenProviders();
 
+// --- JWT Authentication ---
+var jwtSettings = builder.Configuration.GetSection("Jwt");
+builder.Services.Configure<JwtSettings>(jwtSettings);
+builder.Services.AddScoped<JwtService>();
 
+builder.Services.AddAuthentication(options =>
+{
+    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+})
+.AddJwtBearer(options =>
+{
+    options.TokenValidationParameters = new TokenValidationParameters
+    {
+        ValidateIssuer = true,
+        ValidateAudience = true,
+        ValidateLifetime = true,
+        ValidateIssuerSigningKey = true,
+        ValidIssuer = jwtSettings["Issuer"],
+        ValidAudience = jwtSettings["Audience"],
+        IssuerSigningKey = new SymmetricSecurityKey(
+            Encoding.UTF8.GetBytes(jwtSettings["Key"]!)
+        ),
+        ClockSkew = TimeSpan.Zero
+    };
+});
+
+// --- Authorization ---
+builder.Services.AddAuthorization();
+
+// --- Custom Services ---
 builder.Services.AddScoped<ActivityService>();
+builder.Services.AddScoped<IEmailSender, SmtpEmailSender>();
 
-
-// Controllers
+// --- Controllers ---
 builder.Services.AddControllers();
 
-// CORS for Angular
+// --- CORS (for Angular client) ---
 builder.Services.AddCors(options =>
 {
     options.AddPolicy(CorsPolicy, policy =>
@@ -38,11 +71,9 @@ builder.Services.AddCors(options =>
               .AllowAnyMethod());
 });
 
-// Swagger
+// --- Swagger ---
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
-builder.Services.AddScoped<IEmailSender, SmtpEmailSender>();
-
 
 var app = builder.Build();
 
