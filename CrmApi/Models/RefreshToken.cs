@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Identity;
+﻿using CrmApi.Models;
+using Microsoft.AspNetCore.Identity;
 
 public class RefreshToken
 {
@@ -7,6 +8,6 @@ public class RefreshToken
     public string Token { get; set; } = string.Empty;
     public DateTime Expires { get; set; }  // matches SQL column
     public bool IsRevoked { get; set; } = false;
-    public IdentityUser? User { get; set; } = null;  // nullable
+    public ApplicationUser? User { get; set; } = null;  // nullable
 }
 

@@ -1,11 +1,13 @@
-﻿using CrmApi.Models;
+﻿using CrmApi.DTOs;
+using CrmApi.Models;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
+using System.Security;
 
 namespace CrmApi.Data
 {
-    public class CrmDbContext : IdentityDbContext<IdentityUser>
+    public class CrmDbContext : IdentityDbContext<ApplicationUser>
     {
         public CrmDbContext(DbContextOptions<CrmDbContext> options) : base(options) { }
 
@@ -20,7 +22,8 @@ namespace CrmApi.Data
         public DbSet<Note> Notes { get; set; }
         public DbSet<Event> Events { get; set; }
         public DbSet<RefreshToken> RefreshTokens { get; set; }
-
+        public DbSet<Permission> Permissions { get; set; }
+        public DbSet<RolePermission> RolePermissions { get; set; }
         protected override void OnModelCreating(ModelBuilder b)
         {
             base.OnModelCreating(b); // important for Identity

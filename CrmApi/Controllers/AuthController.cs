@@ -2,10 +2,13 @@
 using CrmApi.DTOs;
 using CrmApi.Models;
 using CrmApi.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.UI.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Data;
+
 
 namespace CrmApi.Controllers;
 
@@ -13,15 +16,15 @@ namespace CrmApi.Controllers;
 [Route("api/[controller]")]
 public class AuthController : ControllerBase
 {
-    private readonly UserManager<IdentityUser> _userManager;
-    private readonly SignInManager<IdentityUser> _signInManager;
+    private readonly UserManager<ApplicationUser> _userManager;
+    private readonly SignInManager<ApplicationUser> _signInManager;
     private readonly IEmailSender _emailSender;
     private readonly CrmDbContext _db;
     private readonly JwtService _jwtService;
 
     public AuthController(
-        UserManager<IdentityUser> userManager,
-        SignInManager<IdentityUser> signInManager,
+        UserManager<ApplicationUser> userManager,
+        SignInManager<ApplicationUser> signInManager,
         IEmailSender emailSender,
         CrmDbContext db,
         JwtService jwtService)
@@ -40,21 +43,21 @@ public class AuthController : ControllerBase
         if (!ModelState.IsValid)
         {
             var errors = ModelState.Values.SelectMany(v => v.Errors)
-                                          .Select(e => e.ErrorMessage);
+                .Select(e => e.ErrorMessage);
             return BadRequest(new { errors });
         }
 
-        // Check if username or email already exists
         if (await _userManager.FindByNameAsync(dto.Username) != null)
             return BadRequest(new { message = "Username already exists" });
 
         if (await _userManager.FindByEmailAsync(dto.Email) != null)
             return BadRequest(new { message = "Email already exists" });
 
-        var user = new IdentityUser
+        var user = new ApplicationUser
         {
             UserName = dto.Username,
             Email = dto.Email,
+            Name = dto.Name,
             EmailConfirmed = true
         };
 
@@ -62,11 +65,42 @@ public class AuthController : ControllerBase
         if (!result.Succeeded)
             return BadRequest(result.Errors.Select(e => e.Description));
 
-        // Optional: add Name claim
-        await _userManager.AddClaimAsync(user, new System.Security.Claims.Claim("Name", dto.Name));
+        // Default role = "user"
+        await _userManager.AddToRoleAsync(user, "user");
 
-        return Ok(new { user.Id, user.UserName, user.Email });
+        return Ok(new { user.Id, user.UserName, user.Email, user.Name });
     }
+    //[HttpPost("signup")]
+    //public async Task<IActionResult> Signup([FromBody] SignUpDto dto)
+    //{
+    //    if (!ModelState.IsValid)
+    //    {
+    //        var errors = ModelState.Values.SelectMany(v => v.Errors)
+    //                                      .Select(e => e.ErrorMessage);
+    //        return BadRequest(new { errors });
+    //    }
+
+    //    if (await _userManager.FindByNameAsync(dto.Username) != null)
+    //        return BadRequest(new { message = "Username already exists" });
+
+    //    if (await _userManager.FindByEmailAsync(dto.Email) != null)
+    //        return BadRequest(new { message = "Email already exists" });
+
+    //    var user = new ApplicationUser
+    //    {
+    //        UserName = dto.Username,
+    //        Email = dto.Email,
+    //        Name = dto.Name,   
+    //        EmailConfirmed = true
+    //    };
+
+    //    var result = await _userManager.CreateAsync(user, dto.Password);
+    //    if (!result.Succeeded)
+    //        return BadRequest(result.Errors.Select(e => e.Description));
+
+    //    return Ok(new { user.Id, user.UserName, user.Email, user.Name });
+    //}
+
 
     // ✅ Login
     [HttpPost("login")]
@@ -82,28 +116,44 @@ public class AuthController : ControllerBase
 
         try
         {
-            // Generate JWT + Refresh token
-            var (accessToken, refreshToken, refreshExpiry) = await _jwtService.GenerateTokensAsync(user);
+            // Generate JWT + refresh token + permissions
+            var (accessToken, refreshToken, refreshExpiry, permissions) = await _jwtService.GenerateTokensAsync(user);
 
             // Save refresh token in DB
-            var tokenEntity = new RefreshToken
+            _db.RefreshTokens.Add(new RefreshToken
             {
                 UserId = user.Id,
                 Token = refreshToken,
                 Expires = refreshExpiry,
                 IsRevoked = false
-            };
-
-            _db.RefreshTokens.Add(tokenEntity);
+            });
             await _db.SaveChangesAsync();
 
-            return Ok(new { AccessToken = accessToken, RefreshToken = refreshToken });
+            // Get roles
+            var roles = await _userManager.GetRolesAsync(user);
+
+            // Return user info, roles, and permissions
+            return Ok(new
+            {
+                user = new
+                {
+                    user.Id,
+                    user.UserName,
+                    user.Email,
+                    user.Name,
+                    roles,
+                    permissions
+                },
+                accessToken,
+                refreshToken
+            });
         }
         catch (DbUpdateException ex)
         {
             return StatusCode(500, new { message = ex.InnerException?.Message ?? ex.Message });
         }
     }
+
 
     // ✅ Forgot Password
     [HttpPost("forgot-password")]
@@ -157,7 +207,7 @@ public class AuthController : ControllerBase
             refresh.IsRevoked = true;
 
             // Generate new JWT + refresh token
-            var (newAccess, newRefresh, newExpiry) = await _jwtService.GenerateTokensAsync(user);
+            var (newAccess, newRefresh, newExpiry, permissions) = await _jwtService.GenerateTokensAsync(user);
 
             _db.RefreshTokens.Add(new RefreshToken
             {
@@ -176,4 +226,60 @@ public class AuthController : ControllerBase
             return StatusCode(500, new { message = ex.InnerException?.Message ?? ex.Message });
         }
     }
+    // ✅ Logout
+    [HttpPost("logout")]
+    public async Task<IActionResult> Logout([FromBody] TokenResponseDto dto)
+    {
+        var refresh = await _db.RefreshTokens
+            .FirstOrDefaultAsync(r => r.Token == dto.RefreshToken && !r.IsRevoked);
+
+        if (refresh == null)
+            return NotFound(new { message = "Refresh token not found" });
+
+        refresh.IsRevoked = true;
+        await _db.SaveChangesAsync();
+
+        return Ok(new { message = "Logged out successfully" });
+    }
+
+    [Authorize(Roles = "superadmin")]
+    [HttpGet("all-users")]
+    public IActionResult GetAllUsers()
+    {
+        var users = _userManager.Users.ToList();
+        return Ok(users);
+    }
+
+    [Authorize(Roles = "user,admin,superadmin")]
+    [HttpGet("profile")]
+    public IActionResult GetProfile()
+    {
+        return Ok(new { message = "User profile data" });
+    }
+
+    [Authorize(Roles = "superadmin")]
+    [HttpPost("assign-role")]
+    public async Task<IActionResult> AssignRole([FromBody] AssignRoleDto dto)
+    {
+        try
+        {
+            var user = await _userManager.FindByIdAsync(dto.UserId.ToString());
+            if (user == null) return NotFound(new { message = "User not found" });
+
+            if (!await _userManager.IsInRoleAsync(user, dto.Role))
+            {
+                var result = await _userManager.AddToRoleAsync(user, dto.Role);
+                if (!result.Succeeded)
+                    return StatusCode(500, new { errors = result.Errors.Select(e => e.Description) });
+            }
+
+            return Ok(new { message = $"Role {dto.Role} assigned to {user.UserName}" });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { error = ex.Message, stackTrace = ex.StackTrace });
+        }
+    }
+
+
 }
