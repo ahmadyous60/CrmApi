@@ -3,7 +3,6 @@ using CrmApi.Models;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
-using System.Security;
 
 namespace CrmApi.Data
 {
@@ -21,29 +20,59 @@ namespace CrmApi.Data
         public DbSet<Models.Task> Tasks { get; set; }
         public DbSet<Note> Notes { get; set; }
         public DbSet<Event> Events { get; set; }
+
+        // Security & Auth
         public DbSet<RefreshToken> RefreshTokens { get; set; }
         public DbSet<Permission> Permissions { get; set; }
         public DbSet<RolePermission> RolePermissions { get; set; }
-        protected override void OnModelCreating(ModelBuilder b)
-        {
-            base.OnModelCreating(b); // important for Identity
+        public DbSet<RoleAccess> RoleAccesses { get; set; }
 
-            // Default CreatedAt for all entities
-            b.Entity<Lead>().Property(x => x.CreatedAt).HasDefaultValueSql("GETUTCDATE()");
-            b.Entity<Deal>().Property(x => x.CreatedAt).HasDefaultValueSql("GETUTCDATE()");
-            b.Entity<Contact>().Property(x => x.CreatedAt).HasDefaultValueSql("GETUTCDATE()");
-            b.Entity<Company>().Property(x => x.CreatedAt).HasDefaultValueSql("GETUTCDATE()");
-            b.Entity<Note>().Property(x => x.CreatedAt).HasDefaultValueSql("GETUTCDATE()");
+        protected override void OnModelCreating(ModelBuilder builder)
+        {
+            base.OnModelCreating(builder); // Required for Identity tables
+
+            // Default CreatedAt for entities
+            builder.Entity<Lead>().Property(x => x.CreatedAt).HasDefaultValueSql("GETUTCDATE()");
+            builder.Entity<Deal>().Property(x => x.CreatedAt).HasDefaultValueSql("GETUTCDATE()");
+            builder.Entity<Contact>().Property(x => x.CreatedAt).HasDefaultValueSql("GETUTCDATE()");
+            builder.Entity<Company>().Property(x => x.CreatedAt).HasDefaultValueSql("GETUTCDATE()");
+            builder.Entity<Note>().Property(x => x.CreatedAt).HasDefaultValueSql("GETUTCDATE()");
 
             // Length constraints
-            b.Entity<Lead>().Property(x => x.Status).HasMaxLength(20);
-            b.Entity<Lead>().Property(x => x.Source).HasMaxLength(20);
-            b.Entity<Deal>().Property(x => x.Stage).HasMaxLength(20);
+            builder.Entity<Lead>().Property(x => x.Status).HasMaxLength(20);
+            builder.Entity<Lead>().Property(x => x.Source).HasMaxLength(20);
+            builder.Entity<Deal>().Property(x => x.Stage).HasMaxLength(20);
 
             // Polymorphic relation (Lead or Contact) for activities
-            b.Entity<Models.Task>().Property(x => x.EntityType).HasMaxLength(20).IsRequired();
-            b.Entity<Note>().Property(x => x.EntityType).HasMaxLength(20).IsRequired();
-            b.Entity<Event>().Property(x => x.EntityType).HasMaxLength(20).IsRequired();
+            builder.Entity<Models.Task>()
+                .Property(x => x.EntityType)
+                .HasMaxLength(20)
+                .IsRequired();
+
+            builder.Entity<Note>()
+                .Property(x => x.EntityType)
+                .HasMaxLength(20)
+                .IsRequired();
+
+            builder.Entity<Event>()
+                .Property(x => x.EntityType)
+                .HasMaxLength(20)
+                .IsRequired();
+
+            // RoleAccess relationships
+            builder.Entity<RoleAccess>()
+                .HasOne(r => r.Role)
+                .WithMany()
+                .HasForeignKey(r => r.RoleId);
+
+            builder.Entity<RoleAccess>()
+                .HasOne(r => r.Permission)
+                .WithMany()
+                .HasForeignKey(r => r.PermissionId);
+
+            // Seed initial permissions & role access
+            PermissionSeeder.SeedPermissions(builder);
+            RoleAccessSeeder.SeedRoleAccess(builder);
         }
     }
 }

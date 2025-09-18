@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Identity.UI.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Data;
+using System.Security.Claims;
 
 
 namespace CrmApi.Controllers;
@@ -37,22 +38,58 @@ public class AuthController : ControllerBase
     }
 
     // ✅ Signup
+    //[HttpPost("signup")]
+    //public async Task<IActionResult> Signup([FromBody] SignUpDto dto)
+    //{
+    //    if (!ModelState.IsValid)
+    //    {
+    //        var errors = ModelState.Values.SelectMany(v => v.Errors)
+    //            .Select(e => e.ErrorMessage);
+    //        return BadRequest(new { errors });
+    //    }
+
+    //    if (await _userManager.FindByNameAsync(dto.Username) != null)
+    //        return BadRequest(new { message = "Username already exists" });
+
+    //    if (await _userManager.FindByEmailAsync(dto.Email) != null)
+    //        return BadRequest(new { message = "Email already exists" });
+
+    //    var user = new ApplicationUser
+    //    {
+    //        UserName = dto.Username,
+    //        Email = dto.Email,
+    //        Name = dto.Name,
+    //        EmailConfirmed = true
+    //    };
+
+    //    var result = await _userManager.CreateAsync(user, dto.Password);
+    //    if (!result.Succeeded)
+    //        return BadRequest(result.Errors.Select(e => e.Description));
+
+    //    // Default role = "user"
+    //    await _userManager.AddToRoleAsync(user, "user");
+
+    //    return Ok(new { user.Id, user.UserName, user.Email, user.Name });
+    //}
     [HttpPost("signup")]
     public async Task<IActionResult> Signup([FromBody] SignUpDto dto)
     {
         if (!ModelState.IsValid)
         {
-            var errors = ModelState.Values.SelectMany(v => v.Errors)
+            var errors = ModelState.Values
+                .SelectMany(v => v.Errors)
                 .Select(e => e.ErrorMessage);
             return BadRequest(new { errors });
         }
 
+        // Check if username/email already exists
         if (await _userManager.FindByNameAsync(dto.Username) != null)
             return BadRequest(new { message = "Username already exists" });
 
         if (await _userManager.FindByEmailAsync(dto.Email) != null)
             return BadRequest(new { message = "Email already exists" });
 
+        // Create user
         var user = new ApplicationUser
         {
             UserName = dto.Username,
@@ -65,11 +102,36 @@ public class AuthController : ControllerBase
         if (!result.Succeeded)
             return BadRequest(result.Errors.Select(e => e.Description));
 
-        // Default role = "user"
+        // Assign default role = "user"
         await _userManager.AddToRoleAsync(user, "user");
 
-        return Ok(new { user.Id, user.UserName, user.Email, user.Name });
+        // Load roles
+        var roles = await _userManager.GetRolesAsync(user);
+
+        // Load permissions from RoleAccess
+        var roleIds = _db.Roles
+            .Where(r => roles.Contains(r.Name))
+            .Select(r => r.Id)
+            .ToList();
+
+        var permissions = _db.RoleAccesses
+            .Where(ra => roleIds.Contains(ra.RoleId))
+            .Include(ra => ra.Permission)
+            .Select(ra => ra.Permission.Name)
+            .ToList();
+
+        // Return new user info with roles + permissions
+        return Ok(new
+        {
+            user.Id,
+            user.UserName,
+            user.Email,
+            user.Name,
+            roles,
+            permissions
+        });
     }
+
     //[HttpPost("signup")]
     //public async Task<IActionResult> Signup([FromBody] SignUpDto dto)
     //{
@@ -102,7 +164,6 @@ public class AuthController : ControllerBase
     //}
 
 
-    // ✅ Login
     [HttpPost("login")]
     public async Task<IActionResult> Login([FromBody] LoginDto dto)
     {
@@ -116,10 +177,20 @@ public class AuthController : ControllerBase
 
         try
         {
-            // Generate JWT + refresh token + permissions
-            var (accessToken, refreshToken, refreshExpiry, permissions) = await _jwtService.GenerateTokensAsync(user);
+            // Get roles
+            var roles = await _userManager.GetRolesAsync(user);
 
-            // Save refresh token in DB
+            // Fetch permissions dynamically from RoleAccess table
+            var permissions = await _db.RoleAccesses
+                .Where(ra => roles.Contains(_db.Roles.FirstOrDefault(r => r.Id == ra.RoleId).Name))
+                .Select(ra => _db.Permissions.FirstOrDefault(p => p.Id == ra.PermissionId).Name)
+                .Distinct()
+                .ToListAsync();
+
+            // Generate JWT and refresh token
+            var (accessToken, refreshToken, refreshExpiry, _) = await _jwtService.GenerateTokensAsync(user);
+
+            // Save refresh token
             _db.RefreshTokens.Add(new RefreshToken
             {
                 UserId = user.Id,
@@ -129,10 +200,6 @@ public class AuthController : ControllerBase
             });
             await _db.SaveChangesAsync();
 
-            // Get roles
-            var roles = await _userManager.GetRolesAsync(user);
-
-            // Return user info, roles, and permissions
             return Ok(new
             {
                 user = new
@@ -142,7 +209,7 @@ public class AuthController : ControllerBase
                     user.Email,
                     user.Name,
                     roles,
-                    permissions
+                    Permissions = permissions
                 },
                 accessToken,
                 refreshToken
@@ -153,6 +220,7 @@ public class AuthController : ControllerBase
             return StatusCode(500, new { message = ex.InnerException?.Message ?? ex.Message });
         }
     }
+
 
 
     // ✅ Forgot Password
@@ -242,20 +310,8 @@ public class AuthController : ControllerBase
         return Ok(new { message = "Logged out successfully" });
     }
 
-    [Authorize(Roles = "superadmin")]
-    [HttpGet("all-users")]
-    public IActionResult GetAllUsers()
-    {
-        var users = _userManager.Users.ToList();
-        return Ok(users);
-    }
+ 
 
-    [Authorize(Roles = "user,admin,superadmin")]
-    [HttpGet("profile")]
-    public IActionResult GetProfile()
-    {
-        return Ok(new { message = "User profile data" });
-    }
 
     [Authorize(Roles = "superadmin")]
     [HttpPost("assign-role")]

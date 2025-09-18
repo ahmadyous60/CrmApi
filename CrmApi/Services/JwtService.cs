@@ -10,7 +10,7 @@ using System.Text;
 
 namespace CrmApi.Services
 {
-    public class JwtService
+    public class JwtService 
     {
         private readonly JwtSettings _settings;
         private readonly UserManager<ApplicationUser> _userManager;
@@ -23,30 +23,30 @@ namespace CrmApi.Services
             _db = db;
         }
 
-        public async Task<(string accessToken, string refreshToken, DateTime refreshExpiry, List<string> permissions)> GenerateTokensAsync(ApplicationUser user)
+        public async Task<(string accessToken, string refreshToken, DateTime refreshExpiry, List<string> userPermissions)> GenerateTokensAsync(ApplicationUser user)
         {
             var roles = await _userManager.GetRolesAsync(user);
 
             // Determine permissions
-            List<string> permissions;
+            List<string> userPermissions;
             if (roles.Contains("superadmin"))
             {
-                permissions = await _db.Permissions
+                userPermissions = await _db.Permissions
                     .Select(p => p.Name)
                     .ToListAsync();
             }
             else
             {
-                permissions = await _db.RolePermissions
-                    .Include(rp => rp.Role)
-                    .Include(rp => rp.Permission)
-                    .Where(rp => roles.Contains(rp.Role.Name))
-                    .Select(rp => rp.Permission.Name)
+                userPermissions = await _db.RoleAccesses
+                    .Include(ra => ra.Permission)
+                    .Include(ra => ra.Role)
+                    .Where(ra => roles.Contains(ra.Role.Name))
+                    .Select(ra => ra.Permission.Name)
                     .Distinct()
                     .ToListAsync();
             }
 
-            // Build claims
+            // Build JWT claims
             var authClaims = new List<Claim>
             {
                 new Claim(ClaimTypes.NameIdentifier, user.Id),
@@ -55,7 +55,7 @@ namespace CrmApi.Services
             };
 
             authClaims.AddRange(roles.Select(r => new Claim(ClaimTypes.Role, r)));
-            authClaims.AddRange(permissions.Select(p => new Claim("Permission", p)));
+            authClaims.AddRange(userPermissions.Select(p => new Claim("Permission", p)));
 
             var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_settings.Key));
 
@@ -71,7 +71,7 @@ namespace CrmApi.Services
             var refreshToken = Convert.ToBase64String(Guid.NewGuid().ToByteArray());
             var refreshExpiry = DateTime.UtcNow.AddDays(_settings.RefreshTokenExpiryDays);
 
-            return (accessToken, refreshToken, refreshExpiry, permissions);
+            return (accessToken, refreshToken, refreshExpiry, userPermissions);
         }
     }
 }
