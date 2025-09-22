@@ -8,16 +8,13 @@ public static class RoleAccessSeeder
         var roleAccesses = new List<RoleAccess>
         {
             // ================= USER (View-only) =================
-            new RoleAccess { Id = Guid.Parse("10000000-0000-0000-0000-000000000001"), RoleId = "ab6ef452-b89e-4382-9cb7-a2f9ae074e5a", PermissionId = Guid.Parse("926E654E-7C2B-4C24-8C12-7A594A4008E0") }, // Users.View
-            new RoleAccess { Id = Guid.Parse("10000000-0000-0000-0000-000000000002"), RoleId = "ab6ef452-b89e-4382-9cb7-a2f9ae074e5a", PermissionId = Guid.Parse("E2F7C163-E7E8-49F7-9DD0-25662363524E") }, // Leads.View
-            new RoleAccess { Id = Guid.Parse("10000000-0000-0000-0000-000000000003"), RoleId = "ab6ef452-b89e-4382-9cb7-a2f9ae074e5a", PermissionId = Guid.Parse("504672A9-2F7F-4480-9D06-4826A6DE01D5") }, // Deals.View
             new RoleAccess { Id = Guid.Parse("10000000-0000-0000-0000-000000000004"), RoleId = "ab6ef452-b89e-4382-9cb7-a2f9ae074e5a", PermissionId = Guid.Parse("454F0F6A-A216-45AB-B78B-D2079CB4D608") }, // Contacts.View
             new RoleAccess { Id = Guid.Parse("10000000-0000-0000-0000-000000000005"), RoleId = "ab6ef452-b89e-4382-9cb7-a2f9ae074e5a", PermissionId = Guid.Parse("BEFB6F03-7C95-4FFE-85F1-59BE64958175") }, // Companies.View
 
-            // ================= ADMIN (CRUD) ===================
+            // ================= ADMIN (CRU) ===================
 
             // Leads
-            new RoleAccess { Id = Guid.Parse("20000000-0000-0000-0000-000000000005"), RoleId = "1e13facc-515f-40d1-8c0d-196a8374e104", PermissionId = Guid.Parse("E2F7C163-E7E8-49F7-9DD0-25662363524E") }, // View Leads
+            new RoleAccess { Id = Guid.Parse("4460BE55-45FC-4725-8F75-1EF5875F6BBA"), RoleId = "1e13facc-515f-40d1-8c0d-196a8374e104", PermissionId = Guid.Parse("E2F7C163-E7E8-49F7-9DD0-25662363524E") }, // View Leads
             new RoleAccess { Id = Guid.Parse("20000000-0000-0000-0000-000000000006"), RoleId = "1e13facc-515f-40d1-8c0d-196a8374e104", PermissionId = Guid.Parse("E2E6F8CE-176F-4599-B92E-DCC5FB3050CB") }, // Add Leads
             new RoleAccess { Id = Guid.Parse("20000000-0000-0000-0000-000000000007"), RoleId = "1e13facc-515f-40d1-8c0d-196a8374e104", PermissionId = Guid.Parse("7AA1FD07-7726-414E-9DCE-1723586C128E") }, // Edit Leads
 

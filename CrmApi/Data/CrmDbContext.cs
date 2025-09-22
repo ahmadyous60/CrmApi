@@ -24,7 +24,7 @@ namespace CrmApi.Data
         // Security & Auth
         public DbSet<RefreshToken> RefreshTokens { get; set; }
         public DbSet<Permission> Permissions { get; set; }
-        public DbSet<RolePermission> RolePermissions { get; set; }
+        //public DbSet<RolePermission> RolePermissions { get; set; }
         public DbSet<RoleAccess> RoleAccesses { get; set; }
 
         protected override void OnModelCreating(ModelBuilder builder)

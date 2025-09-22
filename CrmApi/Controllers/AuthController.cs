@@ -38,39 +38,6 @@ public class AuthController : ControllerBase
     }
 
     // ✅ Signup
-    //[HttpPost("signup")]
-    //public async Task<IActionResult> Signup([FromBody] SignUpDto dto)
-    //{
-    //    if (!ModelState.IsValid)
-    //    {
-    //        var errors = ModelState.Values.SelectMany(v => v.Errors)
-    //            .Select(e => e.ErrorMessage);
-    //        return BadRequest(new { errors });
-    //    }
-
-    //    if (await _userManager.FindByNameAsync(dto.Username) != null)
-    //        return BadRequest(new { message = "Username already exists" });
-
-    //    if (await _userManager.FindByEmailAsync(dto.Email) != null)
-    //        return BadRequest(new { message = "Email already exists" });
-
-    //    var user = new ApplicationUser
-    //    {
-    //        UserName = dto.Username,
-    //        Email = dto.Email,
-    //        Name = dto.Name,
-    //        EmailConfirmed = true
-    //    };
-
-    //    var result = await _userManager.CreateAsync(user, dto.Password);
-    //    if (!result.Succeeded)
-    //        return BadRequest(result.Errors.Select(e => e.Description));
-
-    //    // Default role = "user"
-    //    await _userManager.AddToRoleAsync(user, "user");
-
-    //    return Ok(new { user.Id, user.UserName, user.Email, user.Name });
-    //}
     [HttpPost("signup")]
     public async Task<IActionResult> Signup([FromBody] SignUpDto dto)
     {
@@ -105,64 +72,29 @@ public class AuthController : ControllerBase
         // Assign default role = "user"
         await _userManager.AddToRoleAsync(user, "user");
 
-        // Load roles
-        var roles = await _userManager.GetRolesAsync(user);
+        // Generate JWT + refresh token (permissions & roles inside token only)
+        var (accessToken, refreshToken, refreshExpiry, _) = await _jwtService.GenerateTokensAsync(user);
 
-        // Load permissions from RoleAccess
-        var roleIds = _db.Roles
-            .Where(r => roles.Contains(r.Name))
-            .Select(r => r.Id)
-            .ToList();
+        // Save refresh token
+        _db.RefreshTokens.Add(new RefreshToken
+        {
+            UserId = user.Id,
+            Token = refreshToken,
+            Expires = refreshExpiry,
+            IsRevoked = false
+        });
+        await _db.SaveChangesAsync();
 
-        var permissions = _db.RoleAccesses
-            .Where(ra => roleIds.Contains(ra.RoleId))
-            .Include(ra => ra.Permission)
-            .Select(ra => ra.Permission.Name)
-            .ToList();
-
-        // Return new user info with roles + permissions
+        // Return only tokens
         return Ok(new
         {
-            user.Id,
-            user.UserName,
-            user.Email,
-            user.Name,
-            roles,
-            permissions
+            AccessToken = accessToken,
+            RefreshToken = refreshToken
         });
     }
 
-    //[HttpPost("signup")]
-    //public async Task<IActionResult> Signup([FromBody] SignUpDto dto)
-    //{
-    //    if (!ModelState.IsValid)
-    //    {
-    //        var errors = ModelState.Values.SelectMany(v => v.Errors)
-    //                                      .Select(e => e.ErrorMessage);
-    //        return BadRequest(new { errors });
-    //    }
 
-    //    if (await _userManager.FindByNameAsync(dto.Username) != null)
-    //        return BadRequest(new { message = "Username already exists" });
-
-    //    if (await _userManager.FindByEmailAsync(dto.Email) != null)
-    //        return BadRequest(new { message = "Email already exists" });
-
-    //    var user = new ApplicationUser
-    //    {
-    //        UserName = dto.Username,
-    //        Email = dto.Email,
-    //        Name = dto.Name,   
-    //        EmailConfirmed = true
-    //    };
-
-    //    var result = await _userManager.CreateAsync(user, dto.Password);
-    //    if (!result.Succeeded)
-    //        return BadRequest(result.Errors.Select(e => e.Description));
-
-    //    return Ok(new { user.Id, user.UserName, user.Email, user.Name });
-    //}
-
+   
 
     [HttpPost("login")]
     public async Task<IActionResult> Login([FromBody] LoginDto dto)
@@ -175,50 +107,18 @@ public class AuthController : ControllerBase
         if (!result.Succeeded)
             return Unauthorized(new { message = "Wrong password entered" });
 
-        try
+        var (accessToken, refreshToken, refreshExpiry, userPermissions) = await _jwtService.GenerateTokensAsync(user);
+
+        _db.RefreshTokens.Add(new RefreshToken
         {
-            // Get roles
-            var roles = await _userManager.GetRolesAsync(user);
+            UserId = user.Id,
+            Token = refreshToken,
+            Expires = refreshExpiry,
+            IsRevoked = false
+        });
+        await _db.SaveChangesAsync();
 
-            // Fetch permissions dynamically from RoleAccess table
-            var permissions = await _db.RoleAccesses
-                .Where(ra => roles.Contains(_db.Roles.FirstOrDefault(r => r.Id == ra.RoleId).Name))
-                .Select(ra => _db.Permissions.FirstOrDefault(p => p.Id == ra.PermissionId).Name)
-                .Distinct()
-                .ToListAsync();
-
-            // Generate JWT and refresh token
-            var (accessToken, refreshToken, refreshExpiry, _) = await _jwtService.GenerateTokensAsync(user);
-
-            // Save refresh token
-            _db.RefreshTokens.Add(new RefreshToken
-            {
-                UserId = user.Id,
-                Token = refreshToken,
-                Expires = refreshExpiry,
-                IsRevoked = false
-            });
-            await _db.SaveChangesAsync();
-
-            return Ok(new
-            {
-                user = new
-                {
-                    user.Id,
-                    user.UserName,
-                    user.Email,
-                    user.Name,
-                    roles,
-                    Permissions = permissions
-                },
-                accessToken,
-                refreshToken
-            });
-        }
-        catch (DbUpdateException ex)
-        {
-            return StatusCode(500, new { message = ex.InnerException?.Message ?? ex.Message });
-        }
+        return Ok(new { accessToken, refreshToken });
     }
 
 
@@ -336,6 +236,52 @@ public class AuthController : ControllerBase
             return StatusCode(500, new { error = ex.Message, stackTrace = ex.StackTrace });
         }
     }
+
+    [Authorize(Roles = "superadmin")]
+    [HttpGet("users")]
+    public async Task<IActionResult> GetAllUsers()
+    {
+        var users = await _userManager.Users
+            .Select(u => new
+            {
+                u.Id,
+                u.UserName,
+                u.Email,
+                u.Name,
+                Roles = (from userRole in _db.UserRoles
+                         join role in _db.Roles on userRole.RoleId equals role.Id
+                         where userRole.UserId == u.Id
+                         select role.Name).ToList()
+            })
+            .ToListAsync();
+
+        return Ok(users);
+    }
+
+    [Authorize(Roles = "superadmin")]
+    [HttpPut("users/{id}/roles")]
+    public async Task<IActionResult> UpdateUserRoles(string id, [FromBody] List<string> roles)
+    {
+        var user = await _userManager.FindByIdAsync(id);
+        if (user == null)
+            return NotFound(new { message = "User not found" });
+
+        // Get existing roles
+        var currentRoles = await _userManager.GetRolesAsync(user);
+
+        // Remove old roles
+        var removeResult = await _userManager.RemoveFromRolesAsync(user, currentRoles);
+        if (!removeResult.Succeeded)
+            return BadRequest(new { errors = removeResult.Errors.Select(e => e.Description) });
+
+        // Add new roles
+        var addResult = await _userManager.AddToRolesAsync(user, roles);
+        if (!addResult.Succeeded)
+            return BadRequest(new { errors = addResult.Errors.Select(e => e.Description) });
+
+        return Ok(new { message = "Roles updated successfully" });
+    }
+  
 
 
 }
