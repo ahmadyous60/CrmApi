@@ -4,9 +4,10 @@ using Microsoft.EntityFrameworkCore;
 
 public static class PermissionSeeder
 {
-    public static void SeedPermissions(ModelBuilder builder)
+    // Central place where all permissions are defined
+    public static List<Permission> GetAllPermissions()
     {
-        var permissions = new List<Permission>
+        return new List<Permission>
         {
             // Users
             new Permission { Id = Guid.Parse("926E654E-7C2B-4C24-8C12-7A594A4008E0"), Name = PermissionConstants.Users.View, Description = "View users" },
@@ -39,7 +40,11 @@ public static class PermissionSeeder
             new Permission { Id = Guid.Parse("0E29DAF9-7FAC-4FC8-9532-4E499E4AFDE7"), Name = PermissionConstants.Companies.Edit, Description = "Edit companies" },
             new Permission { Id = Guid.Parse("98BCFA90-8DE9-499E-9455-AAB4087D8C8A"), Name = PermissionConstants.Companies.Delete, Description = "Delete companies" },
         };
+    }
 
-        builder.Entity<Permission>().HasData(permissions);
+    // Seeder calls the above
+    public static void SeedPermissions(ModelBuilder builder)
+    {
+        builder.Entity<Permission>().HasData(GetAllPermissions());
     }
 }

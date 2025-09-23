@@ -31,29 +31,20 @@ namespace CrmApi.Services
             var roles = await _userManager.GetRolesAsync(user);
 
             // Determine permissions
-            List<string> userPermissions;
-            if (roles.Contains("superadmin"))
-            {
-                userPermissions = await _db.Permissions
-                    .Select(p => p.Name)
-                    .ToListAsync();
-            }
-            else
-            {
-                userPermissions = await _db.RoleAccesses
-                    .Include(ra => ra.Permission)
-                    .Include(ra => ra.Role)
-                    .Where(ra => roles.Contains(ra.Role.Name))
-                    .Select(ra => ra.Permission.Name)
-                    .Distinct()
-                    .ToListAsync();
-            }
+            var userPermissions = await _db.RoleAccesses
+               .Include(ra => ra.Permission)
+               .Include(ra => ra.Role)
+               .Where(ra => roles.Contains(ra.Role.Name))
+               .Select(ra => ra.Permission.Name)
+               .Distinct()
+               .ToListAsync();
 
             // Build JWT claims
             var authClaims = new List<Claim>
             {
                 new Claim(ClaimTypes.NameIdentifier, user.Id),
                 new Claim(ClaimTypes.Name, user.UserName ?? string.Empty),
+                new Claim("FullName", user.Name ?? string.Empty),
                 new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
             };
 

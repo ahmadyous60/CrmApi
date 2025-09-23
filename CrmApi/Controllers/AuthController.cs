@@ -281,7 +281,20 @@ public class AuthController : ControllerBase
 
         return Ok(new { message = "Roles updated successfully" });
     }
-  
 
+    [Authorize(Roles = "superadmin")]
+    [HttpDelete("users/{id}")]
+    public async Task<IActionResult> DeleteUser(string id)
+    {
+        var user = await _userManager.FindByIdAsync(id);
+        if (user == null)
+            return NotFound(new { message = "User not found" });
+
+        var result = await _userManager.DeleteAsync(user);
+        if (!result.Succeeded)
+            return BadRequest(new { errors = result.Errors.Select(e => e.Description) });
+
+        return Ok(new { message = "User deleted successfully" });
+    }
 
 }
