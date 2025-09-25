@@ -8,7 +8,6 @@ using Microsoft.AspNetCore.Identity.UI.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Data;
-using System.Security.Claims;
 
 
 namespace CrmApi.Controllers;
@@ -296,5 +295,83 @@ public class AuthController : ControllerBase
 
         return Ok(new { message = "User deleted successfully" });
     }
+    [Authorize(Roles = "superadmin")]
+    [HttpGet("permissions")]
+    public async Task<IActionResult> GetAllPermissions()
+    {
+        var permissions = await _db.Permissions.ToListAsync();
+        return Ok(permissions);
+    }
+
+    [Authorize(Roles = "superadmin")]
+    [HttpPost("roles/{roleId}/permissions")]
+    public async Task<IActionResult> AssignPermissionToRole(string roleId, [FromBody] List<string> permissionIds)
+    {
+        foreach (var pid in permissionIds)
+        {
+            if (Guid.TryParse(pid, out var guid))
+            {
+                if (!_db.RoleAccesses.Any(ra => ra.RoleId == roleId && ra.PermissionId == guid))
+                {
+                    _db.RoleAccesses.Add(new RoleAccess { RoleId = roleId, PermissionId = guid });
+                }
+            }
+        }
+        await _db.SaveChangesAsync();
+        return Ok(new { message = "Permissions assigned" });
+    }
+
+
+
+    [Authorize(Roles = "superadmin")]
+    [HttpDelete("roles/{roleId}/permissions/{permissionId}")]
+    public async Task<IActionResult> RevokePermission(string roleId, Guid permissionId)
+    {
+        var access = await _db.RoleAccesses
+            .FirstOrDefaultAsync(r => r.RoleId == roleId && r.PermissionId == permissionId);
+
+        if (access == null)
+            return NotFound(new { message = "Permission not found for this role" });
+
+        _db.RoleAccesses.Remove(access);
+        await _db.SaveChangesAsync();
+
+        return Ok(new { message = "Permission revoked successfully" });
+    }
+
+
+
+
+    [Authorize(Roles = "superadmin")]
+    [HttpGet("users/{id}/permissions")]
+    public async Task<IActionResult> GetUserPermissions(string id)
+    {
+        var user = await _userManager.FindByIdAsync(id);
+        if (user == null)
+            return NotFound(new { message = "User not found" });
+
+        // Get role names for the user
+        var roleNames = await _userManager.GetRolesAsync(user);
+
+        // Fetch role IDs by names
+        var roleIds = await _db.Roles
+            .Where(r => roleNames.Contains(r.Name))
+            .Select(r => r.Id)
+            .ToListAsync();
+
+        // Fetch permissions linked to these role IDs
+        var permissions = await _db.RoleAccesses
+            .Where(ra => roleIds.Contains(ra.RoleId))
+            .Join(_db.Permissions,
+                  ra => ra.PermissionId,
+                  p => p.Id,
+                  (ra, p) => new { p.Id, p.Name }) // return id + name
+            .Distinct()
+            .ToListAsync();
+
+        return Ok(permissions);
+    }
+
+
 
 }

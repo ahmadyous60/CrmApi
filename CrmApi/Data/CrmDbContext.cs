@@ -67,8 +67,9 @@ namespace CrmApi.Data
 
             builder.Entity<RoleAccess>()
                 .HasOne(r => r.Permission)
-                .WithMany()
-                .HasForeignKey(r => r.PermissionId);
+                .WithMany(p => p.RoleAccessses)
+                .HasForeignKey(r => r.PermissionId)
+                .OnDelete(DeleteBehavior.Cascade);
 
             // Seed initial permissions & role access
             PermissionSeeder.SeedPermissions(builder);
