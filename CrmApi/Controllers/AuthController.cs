@@ -295,40 +295,49 @@ public class AuthController : ControllerBase
 
         return Ok(new { message = "User deleted successfully" });
     }
+        [Authorize(Roles = "superadmin")]
+        [HttpGet("permissions")]
+        public async Task<IActionResult> GetAllPermissions()
+        {
+            var permissions = await _db.Permissions.ToListAsync();
+            return Ok(permissions);
+        }
     [Authorize(Roles = "superadmin")]
-    [HttpGet("permissions")]
-    public async Task<IActionResult> GetAllPermissions()
+    [HttpPost("roles/{roleName}/permissionsByName")]
+    public async Task<IActionResult> AssignPermissionToRoleByName(string roleName, [FromBody] List<string> permissionIds)
     {
-        var permissions = await _db.Permissions.ToListAsync();
-        return Ok(permissions);
-    }
+        var role = await _db.Roles.FirstOrDefaultAsync(r => r.Name == roleName);
+        if (role == null) return NotFound("Role not found");
 
-    [Authorize(Roles = "superadmin")]
-    [HttpPost("roles/{roleId}/permissions")]
-    public async Task<IActionResult> AssignPermissionToRole(string roleId, [FromBody] List<string> permissionIds)
-    {
         foreach (var pid in permissionIds)
         {
             if (Guid.TryParse(pid, out var guid))
             {
-                if (!_db.RoleAccesses.Any(ra => ra.RoleId == roleId && ra.PermissionId == guid))
+                if (!_db.RoleAccesses.Any(ra => ra.RoleId == role.Id && ra.PermissionId == guid))
                 {
-                    _db.RoleAccesses.Add(new RoleAccess { RoleId = roleId, PermissionId = guid });
+                    _db.RoleAccesses.Add(new RoleAccess { RoleId = role.Id, PermissionId = guid });
                 }
             }
         }
+
         await _db.SaveChangesAsync();
         return Ok(new { message = "Permissions assigned" });
     }
 
 
-
     [Authorize(Roles = "superadmin")]
-    [HttpDelete("roles/{roleId}/permissions/{permissionId}")]
-    public async Task<IActionResult> RevokePermission(string roleId, Guid permissionId)
+    [HttpDelete("roles/{roleName}/permissions/{permissionId}")]
+    public async Task<IActionResult> RevokePermission(string roleName, string permissionId)
     {
+        var role = await _db.Roles.FirstOrDefaultAsync(r => r.Name == roleName);
+        if (role == null)
+            return NotFound(new { message = "Role not found" });
+
+        if (!Guid.TryParse(permissionId, out var guid))
+            return BadRequest(new { message = "Invalid permission id" });
+
         var access = await _db.RoleAccesses
-            .FirstOrDefaultAsync(r => r.RoleId == roleId && r.PermissionId == permissionId);
+            .FirstOrDefaultAsync(r => r.RoleId == role.Id && r.PermissionId == guid);
 
         if (access == null)
             return NotFound(new { message = "Permission not found for this role" });
@@ -343,34 +352,50 @@ public class AuthController : ControllerBase
 
 
     [Authorize(Roles = "superadmin")]
-    [HttpGet("users/{id}/permissions")]
-    public async Task<IActionResult> GetUserPermissions(string id)
+        [HttpGet("users/{id}/permissions")]
+        public async Task<IActionResult> GetUserPermissions(string id)
+        {
+            var user = await _userManager.FindByIdAsync(id);
+            if (user == null)
+                return NotFound(new { message = "User not found" });
+
+            // Get role names for the user
+            var roleNames = await _userManager.GetRolesAsync(user);
+
+            // Fetch role IDs by names
+            var roleIds = await _db.Roles
+                .Where(r => roleNames.Contains(r.Name))
+                .Select(r => r.Id)
+                .ToListAsync();
+
+            // Fetch permissions linked to these role IDs
+            var permissions = await _db.RoleAccesses
+                .Where(ra => roleIds.Contains(ra.RoleId))
+                .Join(_db.Permissions,
+                      ra => ra.PermissionId,
+                      p => p.Id,
+                      (ra, p) => new { p.Id, p.Name }) // return id + name
+                .Distinct()
+                .ToListAsync();
+
+            return Ok(permissions);
+        }
+
+    [Authorize(Roles = "superadmin")]
+    [HttpGet("roles/{roleId}/permissions")]
+    public async Task<IActionResult> GetRolePermissions(string roleId)
     {
-        var user = await _userManager.FindByIdAsync(id);
-        if (user == null)
-            return NotFound(new { message = "User not found" });
-
-        // Get role names for the user
-        var roleNames = await _userManager.GetRolesAsync(user);
-
-        // Fetch role IDs by names
-        var roleIds = await _db.Roles
-            .Where(r => roleNames.Contains(r.Name))
-            .Select(r => r.Id)
-            .ToListAsync();
-
-        // Fetch permissions linked to these role IDs
         var permissions = await _db.RoleAccesses
-            .Where(ra => roleIds.Contains(ra.RoleId))
+            .Where(ra => ra.RoleId == roleId)
             .Join(_db.Permissions,
                   ra => ra.PermissionId,
                   p => p.Id,
-                  (ra, p) => new { p.Id, p.Name }) // return id + name
-            .Distinct()
+                  (ra, p) => new { p.Id, p.Name })
             .ToListAsync();
 
         return Ok(permissions);
     }
+
 
 
 
