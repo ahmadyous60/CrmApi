@@ -303,50 +303,43 @@ public class AuthController : ControllerBase
             return Ok(permissions);
         }
     [Authorize(Roles = "superadmin")]
-    [HttpPost("roles/{roleName}/permissionsByName")]
-    public async Task<IActionResult> AssignPermissionToRoleByName(string roleName, [FromBody] List<string> permissionIds)
+    [HttpGet("roles/{roleName}/permissionsByName")]
+    public async Task<IActionResult> GetRolePermissionsByName(string roleName)
     {
         var role = await _db.Roles.FirstOrDefaultAsync(r => r.Name == roleName);
         if (role == null) return NotFound("Role not found");
 
-        foreach (var pid in permissionIds)
-        {
-            if (Guid.TryParse(pid, out var guid))
-            {
-                if (!_db.RoleAccesses.Any(ra => ra.RoleId == role.Id && ra.PermissionId == guid))
-                {
-                    _db.RoleAccesses.Add(new RoleAccess { RoleId = role.Id, PermissionId = guid });
-                }
-            }
-        }
+        var permissions = await _db.RoleAccesses
+            .Where(rp => rp.RoleId == role.Id)
+            .Select(rp => new { rp.Permission.Id, rp.Permission.Name })
+            .ToListAsync();
 
-        await _db.SaveChangesAsync();
-        return Ok(new { message = "Permissions assigned" });
+        return Ok(permissions);
     }
-
-
     [Authorize(Roles = "superadmin")]
     [HttpDelete("roles/{roleName}/permissions/{permissionId}")]
-    public async Task<IActionResult> RevokePermission(string roleName, string permissionId)
+    public async Task<IActionResult> RevokePermissionFromRole(string roleName, string permissionId)
     {
         var role = await _db.Roles.FirstOrDefaultAsync(r => r.Name == roleName);
-        if (role == null)
-            return NotFound(new { message = "Role not found" });
+        if (role == null) return NotFound("Role not found");
 
-        if (!Guid.TryParse(permissionId, out var guid))
-            return BadRequest(new { message = "Invalid permission id" });
+        // Convert string → Guid
+        if (!Guid.TryParse(permissionId, out var permissionGuid))
+        {
+            return BadRequest("Invalid permission ID format.");
+        }
 
         var access = await _db.RoleAccesses
-            .FirstOrDefaultAsync(r => r.RoleId == role.Id && r.PermissionId == guid);
+            .FirstOrDefaultAsync(rp => rp.RoleId == role.Id && rp.PermissionId == permissionGuid);
 
-        if (access == null)
-            return NotFound(new { message = "Permission not found for this role" });
+        if (access == null) return NotFound("Permission not assigned to role");
 
         _db.RoleAccesses.Remove(access);
         await _db.SaveChangesAsync();
 
-        return Ok(new { message = "Permission revoked successfully" });
+        return Ok(new { message = "Permission revoked" });
     }
+
 
 
 
@@ -394,6 +387,47 @@ public class AuthController : ControllerBase
             .ToListAsync();
 
         return Ok(permissions);
+    }
+
+    [Authorize(Roles = "superadmin")]
+    [HttpGet("roles")]
+    public async Task<IActionResult> GetAllRoles()
+    {
+        var roles = await _db.Roles
+            .Select(r => new { r.Id, r.Name })
+            .ToListAsync();
+
+        return Ok(roles);
+    }
+    [Authorize(Roles = "superadmin")]
+    [HttpPost("roles/{roleName}/permissionsByName")]
+    public async Task<IActionResult> AssignPermissionToRoleByName(string roleName, [FromBody] List<string> permissionIds)
+    {
+        var role = await _db.Roles.FirstOrDefaultAsync(r => r.Name == roleName);
+        if (role == null) return NotFound("Role not found");
+
+        foreach (var pid in permissionIds)
+        {
+            if (!Guid.TryParse(pid, out var permissionGuid))
+            {
+                return BadRequest($"Invalid permission ID: {pid}");
+            }
+
+            var exists = await _db.RoleAccesses
+                .AnyAsync(rp => rp.RoleId == role.Id && rp.PermissionId == permissionGuid);
+
+            if (!exists)
+            {
+                _db.RoleAccesses.Add(new RoleAccess
+                {
+                    RoleId = role.Id,
+                    PermissionId = permissionGuid
+                });
+            }
+        }
+
+        await _db.SaveChangesAsync();
+        return Ok(new { message = "Permissions assigned" });
     }
 
 

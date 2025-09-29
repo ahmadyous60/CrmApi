@@ -23,6 +23,7 @@
         public const string Add = "Deals.Add";
         public const string Edit = "Deals.Edit";
         public const string Delete = "Deals.Delete";
+        public const string Export = "Deals.Export";    
     }
 
     public static class Contacts
@@ -31,6 +32,7 @@
         public const string Add = "Contacts.Add";
         public const string Edit = "Contacts.Edit";
         public const string Delete = "Contacts.Delete";
+        public const string Export = "Contacts.Export";
     }
 
     public static class Companies
@@ -39,5 +41,6 @@
         public const string Add = "Companies.Add";
         public const string Edit = "Companies.Edit";
         public const string Delete = "Companies.Delete";
+        public const string Export = "Companies.Export";
     }
 }

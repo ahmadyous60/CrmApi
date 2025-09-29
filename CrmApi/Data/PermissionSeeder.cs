@@ -27,18 +27,21 @@ public static class PermissionSeeder
             new Permission { Id = Guid.Parse("EA2A225B-01FB-4A95-A42B-6814A478B91D"), Name = PermissionConstants.Deals.Add, Description = "Add deals" },
             new Permission { Id = Guid.Parse("25D79875-6CBB-49DC-9FA0-F7FD1A5EF611"), Name = PermissionConstants.Deals.Edit, Description = "Edit deals" },
             new Permission { Id = Guid.Parse("17817170-947B-4E96-9E11-192B2FBED308"), Name = PermissionConstants.Deals.Delete, Description = "Delete deals" },
+            new Permission { Id = Guid.Parse("ACD36735-5F59-4F12-BC1A-08B7A2DA6781"), Name = PermissionConstants.Deals.Export, Description = "Export deals" },
 
             // Contacts
             new Permission { Id = Guid.Parse("454F0F6A-A216-45AB-B78B-D2079CB4D608"), Name = PermissionConstants.Contacts.View, Description = "View contacts" },
             new Permission { Id = Guid.Parse("197DE633-9F35-4DA3-A20F-77D08F9843AB"), Name = PermissionConstants.Contacts.Add, Description = "Add contacts" },
             new Permission { Id = Guid.Parse("FD4AF3CB-DF9F-4307-8727-B77B10982E46"), Name = PermissionConstants.Contacts.Edit, Description = "Edit contacts" },
             new Permission { Id = Guid.Parse("62DE43A8-2855-44BA-871E-40E938396DF5"), Name = PermissionConstants.Contacts.Delete, Description = "Delete contacts" },
+            new Permission { Id = Guid.Parse("B6C53F41-0129-4EE0-9C4F-37F7886ACD12"), Name = PermissionConstants.Contacts.Export, Description = "Export contacts" },
 
             // Companies
             new Permission { Id = Guid.Parse("BEFB6F03-7C95-4FFE-85F1-59BE64958175"), Name = PermissionConstants.Companies.View, Description = "View companies" },
             new Permission { Id = Guid.Parse("619E7D84-A439-496F-81C0-B4A979AF3C66"), Name = PermissionConstants.Companies.Add, Description = "Add companies" },
             new Permission { Id = Guid.Parse("0E29DAF9-7FAC-4FC8-9532-4E499E4AFDE7"), Name = PermissionConstants.Companies.Edit, Description = "Edit companies" },
             new Permission { Id = Guid.Parse("98BCFA90-8DE9-499E-9455-AAB4087D8C8A"), Name = PermissionConstants.Companies.Delete, Description = "Delete companies" },
+            new Permission { Id = Guid.Parse("5CE44F6D-BC61-4E5D-9E25-1AF9304D65C9"), Name = PermissionConstants.Companies.Export, Description = "Export companies" },
         };
     }
 
