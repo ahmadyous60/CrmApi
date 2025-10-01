@@ -138,7 +138,8 @@ public class AuthController : ControllerBase
 
         // ✅ Generate email confirmation token
         var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
-        var confirmationLink = $"{_config["App:FrontendUrl"]}/confirm-email?userId={user.Id}&token={Uri.EscapeDataString(token)}";
+        var confirmationLink = $"{_config["App:FrontendUrl"]}/password-renewal?userId={user.Id}&token={Uri.EscapeDataString(token)}";
+
 
 
         // ✅ Send confirmation email
@@ -460,7 +461,7 @@ public class AuthController : ControllerBase
 
             // Fetch role IDs by names
             var roleIds = await _db.Roles
-                .Where(r => roleNames.Contains(r.Name))
+                .Where(r => r.Name != null && roleNames.Contains(r.Name))
                 .Select(r => r.Id)
                 .ToListAsync();
 
