@@ -138,7 +138,8 @@ public class AuthController : ControllerBase
 
         // ✅ Generate email confirmation token
         var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
-        var confirmationLink = $"{_config["App:FrontendUrl"]}/password-renewal?userId={user.Id}&token={Uri.EscapeDataString(token)}";
+        var confirmationLink = $"{_config["App:FrontendUrl"]}/confirm-email?userId={user.Id}&token={Uri.EscapeDataString(token)}";
+
 
         // ✅ Send confirmation email
         await _emailSender.SendEmailAsync(
