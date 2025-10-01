@@ -21,22 +21,83 @@ public class AuthController : ControllerBase
     private readonly IEmailSender _emailSender;
     private readonly CrmDbContext _db;
     private readonly JwtService _jwtService;
+    private readonly IConfiguration _config;
 
     public AuthController(
         UserManager<ApplicationUser> userManager,
         SignInManager<ApplicationUser> signInManager,
         IEmailSender emailSender,
         CrmDbContext db,
-        JwtService jwtService)
+        JwtService jwtService,
+        IConfiguration config)
     {
         _userManager = userManager;
         _signInManager = signInManager;
         _emailSender = emailSender;
         _db = db;
         _jwtService = jwtService;
+        _config = config;
     }
 
-    // ✅ Signup
+    //SignUp
+    //[HttpPost("signup")]
+    //public async Task<IActionResult> Signup([FromBody] SignUpDto dto)
+    //{
+    //    if (!ModelState.IsValid)
+    //    {
+    //        var errors = ModelState.Values
+    //            .SelectMany(v => v.Errors)
+    //            .Select(e => e.ErrorMessage)
+    //            .ToList();
+    //        return BadRequest(new { errors });
+    //    }
+
+    //    // Check if username/email already exists
+    //    if (await _userManager.FindByNameAsync(dto.Username) != null)
+    //        return BadRequest(new { errors = new[] { "Username already exists" } });
+
+    //    if (await _userManager.FindByEmailAsync(dto.Email) != null)
+    //        return BadRequest(new { errors = new[] { "Email already exists" } });
+
+    //    // Create user
+    //    var user = new ApplicationUser
+    //    {
+    //        UserName = dto.Username,
+    //        Email = dto.Email,
+    //        Name = dto.Name,
+    //        EmailConfirmed = false
+    //    };
+
+    //    var result = await _userManager.CreateAsync(user, dto.Password);
+    //    if (!result.Succeeded)
+    //    {
+    //        var errors = result.Errors.Select(e => e.Description).ToList();
+    //        return BadRequest(new { errors });
+    //    }
+
+    //    // Assign default role = "user"
+    //    await _userManager.AddToRoleAsync(user, "user");
+
+    //    // Generate JWT + refresh token
+    //    var (accessToken, refreshToken, refreshExpiry, _) = await _jwtService.GenerateTokensAsync(user);
+
+    //    _db.RefreshTokens.Add(new RefreshToken
+    //    {
+    //        UserId = user.Id,
+    //        Token = refreshToken,
+    //        Expires = refreshExpiry,
+    //        IsRevoked = false
+    //    });
+    //    await _db.SaveChangesAsync();
+
+    //    return Ok(new
+    //    {
+    //        AccessToken = accessToken,
+    //        RefreshToken = refreshToken
+    //    });
+    //}
+
+
     [HttpPost("signup")]
     public async Task<IActionResult> Signup([FromBody] SignUpDto dto)
     {
@@ -44,16 +105,17 @@ public class AuthController : ControllerBase
         {
             var errors = ModelState.Values
                 .SelectMany(v => v.Errors)
-                .Select(e => e.ErrorMessage);
+                .Select(e => e.ErrorMessage)
+                .ToList();
             return BadRequest(new { errors });
         }
 
         // Check if username/email already exists
         if (await _userManager.FindByNameAsync(dto.Username) != null)
-            return BadRequest(new { message = "Username already exists" });
+            return BadRequest(new { errors = new[] { "Username already exists" } });
 
         if (await _userManager.FindByEmailAsync(dto.Email) != null)
-            return BadRequest(new { message = "Email already exists" });
+            return BadRequest(new { errors = new[] { "Email already exists" } });
 
         // Create user
         var user = new ApplicationUser
@@ -61,20 +123,63 @@ public class AuthController : ControllerBase
             UserName = dto.Username,
             Email = dto.Email,
             Name = dto.Name,
-            EmailConfirmed = true
+            EmailConfirmed = false
         };
 
         var result = await _userManager.CreateAsync(user, dto.Password);
         if (!result.Succeeded)
-            return BadRequest(result.Errors.Select(e => e.Description));
+        {
+            var errors = result.Errors.Select(e => e.Description).ToList();
+            return BadRequest(new { errors });
+        }
 
         // Assign default role = "user"
         await _userManager.AddToRoleAsync(user, "user");
 
-        // Generate JWT + refresh token (permissions & roles inside token only)
+        // ✅ Generate email confirmation token
+        var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
+        var confirmationLink = $"{_config["App:FrontendUrl"]}/password-renewal?userId={user.Id}&token={Uri.EscapeDataString(token)}";
+
+        // ✅ Send confirmation email
+        await _emailSender.SendEmailAsync(
+            user.Email,
+            "Confirm your email",
+            $"Please confirm your email by clicking <a href='{confirmationLink}'>here</a>."
+        );
+
+        // ❌ No tokens here
+        return Ok(new { message = "Signup successful. Please check your email to confirm before continuing." });
+    }
+
+    [HttpPost("confirm-email")]
+    public async Task<IActionResult> ConfirmEmail([FromBody] ConfirmEmailDto dto)
+    {
+        var user = await _userManager.FindByIdAsync(dto.UserId);
+        if (user == null) return BadRequest(new { error = "User not found" });
+
+        var result = await _userManager.ConfirmEmailAsync(user, dto.Token);
+        if (!result.Succeeded)
+            return BadRequest(new { errors = result.Errors.Select(e => e.Description) });
+
+        return Ok(new { message = "Email confirmed successfully" });
+    }
+    [HttpPost("change-password")]
+    public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordDto dto)
+    {
+        var user = await _userManager.FindByIdAsync(dto.UserId);
+        if (user == null) return BadRequest(new { error = "User not found" });
+
+        // Make sure email is confirmed
+        if (!user.EmailConfirmed)
+            return BadRequest(new { error = "Email not confirmed" });
+
+        var result = await _userManager.ChangePasswordAsync(user, dto.OldPassword, dto.NewPassword);
+        if (!result.Succeeded)
+            return BadRequest(new { errors = result.Errors.Select(e => e.Description) });
+
+        // ✅ Now generate JWT + refresh token
         var (accessToken, refreshToken, refreshExpiry, _) = await _jwtService.GenerateTokensAsync(user);
 
-        // Save refresh token
         _db.RefreshTokens.Add(new RefreshToken
         {
             UserId = user.Id,
@@ -84,7 +189,6 @@ public class AuthController : ControllerBase
         });
         await _db.SaveChangesAsync();
 
-        // Return only tokens
         return Ok(new
         {
             AccessToken = accessToken,
@@ -92,8 +196,6 @@ public class AuthController : ControllerBase
         });
     }
 
-
-   
 
     [HttpPost("login")]
     public async Task<IActionResult> Login([FromBody] LoginDto dto)
