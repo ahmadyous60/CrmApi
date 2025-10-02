@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Identity.UI.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using System.Security.Claims;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -53,6 +54,9 @@ builder.Services.AddAuthentication(options =>
         IssuerSigningKey = new SymmetricSecurityKey(
             Encoding.UTF8.GetBytes(jwtSettings["Key"]!)
         ),
+
+        NameClaimType = ClaimTypes.Name,
+        RoleClaimType = ClaimTypes.Role,
         ClockSkew = TimeSpan.Zero
     };
 });
@@ -117,6 +121,7 @@ builder.Services.AddAuthorization(options =>
 // --- Custom Services ---
 builder.Services.AddScoped<ActivityService>();
 builder.Services.AddScoped<IEmailSender, SmtpEmailSender>();
+
 
 // --- Controllers ---
 builder.Services.AddControllers();
@@ -183,10 +188,14 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
+
+
 app.UseCors(CorsPolicy);
 
 app.UseAuthentication();
 app.UseAuthorization();
+
+app.UseMiddleware<AuditMiddleware>();
 
 app.MapControllers();
 

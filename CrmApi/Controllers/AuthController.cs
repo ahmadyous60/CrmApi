@@ -534,7 +534,7 @@ public class AuthController : ControllerBase
         return Ok(new { message = "Permissions assigned" });
     }
 
+   
 
 
-
-}
+ }

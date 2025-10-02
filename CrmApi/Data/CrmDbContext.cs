@@ -21,6 +21,8 @@ namespace CrmApi.Data
         public DbSet<Note> Notes { get; set; }
         public DbSet<Event> Events { get; set; }
 
+        public DbSet<AuditLog> AuditLogs { get; set; }
+
         // Security & Auth
         public DbSet<RefreshToken> RefreshTokens { get; set; }
         public DbSet<Permission> Permissions { get; set; }
