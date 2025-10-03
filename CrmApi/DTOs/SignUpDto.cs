@@ -8,5 +8,7 @@
         public string Email { get; set; } = null!;
 
         public string Password { get; set; } = null!;
+        public string? UserId { get; set; }
+        public string? Token { get; set; }
     }
 }

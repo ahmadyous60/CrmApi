@@ -6,8 +6,10 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.UI.Services;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
 using System.Data;
+using System.Text;
 
 
 namespace CrmApi.Controllers;
@@ -98,6 +100,62 @@ public class AuthController : ControllerBase
     //}
 
 
+    //[HttpPost("signup")]
+    //public async Task<IActionResult> Signup([FromBody] SignUpDto dto)
+    //{
+    //    if (!ModelState.IsValid)
+    //    {
+    //        var errors = ModelState.Values
+    //            .SelectMany(v => v.Errors)
+    //            .Select(e => e.ErrorMessage)
+    //            .ToList();
+    //        return BadRequest(new { errors });
+    //    }
+
+    //    // Check if username/email already exists
+    //    if (await _userManager.FindByNameAsync(dto.Username) != null)
+    //        return BadRequest(new { errors = new[] { "Username already exists" } });
+
+    //    if (await _userManager.FindByEmailAsync(dto.Email) != null)
+    //        return BadRequest(new { errors = new[] { "Email already exists" } });
+
+    //    // Create user
+    //    var user = new ApplicationUser
+    //    {
+    //        UserName = dto.Username,
+    //        Email = dto.Email,
+    //        Name = dto.Name,
+    //        EmailConfirmed = false
+    //    };
+
+    //    var result = await _userManager.CreateAsync(user, dto.Password);
+    //    if (!result.Succeeded)
+    //    {
+    //        var errors = result.Errors.Select(e => e.Description).ToList();
+    //        return BadRequest(new { errors });
+    //    }
+
+    //    // Assign default role = "user"
+    //    await _userManager.AddToRoleAsync(user, "user");
+
+    //    // ✅ Generate email confirmation token
+    //    var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
+    //    var confirmationLink = $"{_config["App:FrontendUrl"]}/password-renewal?userId={user.Id}&token={Uri.EscapeDataString(token)}";
+
+
+
+    //    // ✅ Send confirmation email
+    //    await _emailSender.SendEmailAsync(
+    //        user.Email,
+    //        "Confirm your email",
+    //        $"Please confirm your email by clicking <a href='{confirmationLink}'>here</a>."
+    //    );
+
+    //    // ❌ No tokens here
+    //    return Ok(new { message = "Signup successful. Please check your email to confirm before continuing." });
+    //}
+
+
     [HttpPost("signup")]
     public async Task<IActionResult> Signup([FromBody] SignUpDto dto)
     {
@@ -105,81 +163,114 @@ public class AuthController : ControllerBase
         {
             var errors = ModelState.Values
                 .SelectMany(v => v.Errors)
-                .Select(e => e.ErrorMessage)
-                .ToList();
+                .Select(e => e.ErrorMessage);
             return BadRequest(new { errors });
         }
 
-        // Check if username/email already exists
+        // ✅ Case 1: Confirm email
+        if (!string.IsNullOrEmpty(dto.UserId) && !string.IsNullOrEmpty(dto.Token))
+        {
+            var user = await _userManager.FindByIdAsync(dto.UserId);
+            if (user == null)
+                return BadRequest(new { errors = new[] { "User not found" } });
+
+            var decodedBytes = WebEncoders.Base64UrlDecode(dto.Token);
+            var decodedToken = Encoding.UTF8.GetString(decodedBytes);
+
+            var confirmResult = await _userManager.ConfirmEmailAsync(user, decodedToken);
+
+            if (!confirmResult.Succeeded)
+                return BadRequest(new { errors = confirmResult.Errors.Select(e => e.Description) });
+
+            return Ok(new { message = "Email confirmed successfully!" });
+        }
+
+        // ✅ Case 2: Signup
         if (await _userManager.FindByNameAsync(dto.Username) != null)
-            return BadRequest(new { errors = new[] { "Username already exists" } });
+            return BadRequest(new { errors = new[] { "Username already taken" } });
 
         if (await _userManager.FindByEmailAsync(dto.Email) != null)
-            return BadRequest(new { errors = new[] { "Email already exists" } });
+            return BadRequest(new { errors = new[] { "Email already registered" } });
 
-        // Create user
-        var user = new ApplicationUser
+        var newUser = new ApplicationUser
         {
             UserName = dto.Username,
             Email = dto.Email,
-            Name = dto.Name,
-            EmailConfirmed = false
+            Name = dto.Name
         };
 
-        var result = await _userManager.CreateAsync(user, dto.Password);
-        if (!result.Succeeded)
+        var createResult = await _userManager.CreateAsync(newUser, dto.Password);
+        if (!createResult.Succeeded)
+            return BadRequest(new { errors = createResult.Errors.Select(e => e.Description) });
+
+        await _userManager.AddToRoleAsync(newUser, "user");
+
+        var token = await _userManager.GenerateEmailConfirmationTokenAsync(newUser);
+        var encodedToken = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(token));
+
+        var confirmLink = $"{_config["App:AppUrl"]}/password-renewal?userId={newUser.Id}&token={encodedToken}";
+
+
+        await _emailSender.SendEmailAsync(newUser.Email, "Confirm your account",
+            $"Please confirm your account by clicking this link: <a href='{confirmLink}'>Confirm Email</a>");
+
+        return Ok(new
         {
-            var errors = result.Errors.Select(e => e.Description).ToList();
-            return BadRequest(new { errors });
-        }
-
-        // Assign default role = "user"
-        await _userManager.AddToRoleAsync(user, "user");
-
-        // ✅ Generate email confirmation token
-        var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
-        var confirmationLink = $"{_config["App:FrontendUrl"]}/password-renewal?userId={user.Id}&token={Uri.EscapeDataString(token)}";
-
-
-
-        // ✅ Send confirmation email
-        await _emailSender.SendEmailAsync(
-            user.Email,
-            "Confirm your email",
-            $"Please confirm your email by clicking <a href='{confirmationLink}'>here</a>."
-        );
-
-        // ❌ No tokens here
-        return Ok(new { message = "Signup successful. Please check your email to confirm before continuing." });
+            message = "User created successfully. Please check your email to confirm."
+        });
     }
 
-    [HttpPost("confirm-email")]
-    public async Task<IActionResult> ConfirmEmail([FromBody] ConfirmEmailDto dto)
-    {
-        var user = await _userManager.FindByIdAsync(dto.UserId);
-        if (user == null) return BadRequest(new { error = "User not found" });
 
-        var result = await _userManager.ConfirmEmailAsync(user, dto.Token);
-        if (!result.Succeeded)
-            return BadRequest(new { errors = result.Errors.Select(e => e.Description) });
 
-        return Ok(new { message = "Email confirmed successfully" });
-    }
+
+    //[HttpPost("confirm-email")]
+    //public async Task<IActionResult> ConfirmEmail([FromBody] ConfirmEmailDto dto)
+    //{
+    //    var user = await _userManager.FindByIdAsync(dto.UserId);
+    //    if (user == null) return BadRequest(new { error = "User not found" });
+
+    //    var result = await _userManager.ConfirmEmailAsync(user, dto.Token);
+    //    if (!result.Succeeded)
+    //        return BadRequest(new { errors = result.Errors.Select(e => e.Description) });
+
+    //    return Ok(new { message = "Email confirmed successfully" });
+    //}
     [HttpPost("change-password")]
     public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordDto dto)
     {
         var user = await _userManager.FindByIdAsync(dto.UserId);
-        if (user == null) return BadRequest(new { error = "User not found" });
+        if (user == null)
+            return BadRequest(new { error = "User not found" });
 
-        // Make sure email is confirmed
+        // Decode confirmation token
+        var decodedBytes = WebEncoders.Base64UrlDecode(dto.Token);
+        var decodedToken = Encoding.UTF8.GetString(decodedBytes);
+
+        // Confirm email if not already confirmed
         if (!user.EmailConfirmed)
-            return BadRequest(new { error = "Email not confirmed" });
+        {
+            var confirmResult = await _userManager.ConfirmEmailAsync(user, decodedToken);
+            if (!confirmResult.Succeeded)
+                return BadRequest(new { errors = confirmResult.Errors.Select(e => e.Description) });
+        }
 
-        var result = await _userManager.ChangePasswordAsync(user, dto.OldPassword, dto.NewPassword);
-        if (!result.Succeeded)
-            return BadRequest(new { errors = result.Errors.Select(e => e.Description) });
+        IdentityResult pwdResult;
 
-        // ✅ Now generate JWT + refresh token
+        // ✅ Case 1: First-time setup (no password yet)
+        if (!await _userManager.HasPasswordAsync(user))
+        {
+            pwdResult = await _userManager.AddPasswordAsync(user, dto.NewPassword);
+        }
+        else
+        {
+            // ✅ Case 2: Normal password change (requires old password)
+            pwdResult = await _userManager.ChangePasswordAsync(user, dto.OldPassword, dto.NewPassword);
+        }
+
+        if (!pwdResult.Succeeded)
+            return BadRequest(new { errors = pwdResult.Errors.Select(e => e.Description) });
+
+        // ✅ Generate JWT + Refresh Token
         var (accessToken, refreshToken, refreshExpiry, _) = await _jwtService.GenerateTokensAsync(user);
 
         _db.RefreshTokens.Add(new RefreshToken
@@ -197,6 +288,9 @@ public class AuthController : ControllerBase
             RefreshToken = refreshToken
         });
     }
+
+
+
 
 
     [HttpPost("login")]
